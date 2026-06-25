@@ -35,6 +35,9 @@ MOUSE_JITTER_INTENSITY = 35     # Average size of small movements (pixels)
 ENABLE_KEYBOARD_TYPING = False  # Only set True if you control the focused window
 KEYBOARD_ACTION_PROB = 0.20     # Chance of arrow key/modifier activity when idle
 
+# Auto-stop
+STOP_HOUR = 18                  # Hour (24h format) to auto-stop the script (18 = 6 PM)
+
 # Logging
 VERBOSE = True                  # Print status updates
 LOG_INTERVAL = 5                # Print status every N cycles
@@ -177,9 +180,9 @@ def main_loop():
         now = time.time()
         timestamp = datetime.now().strftime('%H:%M:%S')
 
-        # Stop after 6 PM
-        if datetime.now().hour >= 18:
-            print(f"[{timestamp}] Past 6 PM — stopping. Goodnight.")
+        # Auto-stop at configured hour
+        if datetime.now().hour >= STOP_HOUR:
+            print(f"[{timestamp}] Past {STOP_HOUR}:00 — stopping. Goodnight.")
             break
 
         # --- Check if user is active ---
