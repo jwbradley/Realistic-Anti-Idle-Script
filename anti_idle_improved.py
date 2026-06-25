@@ -177,6 +177,11 @@ def main_loop():
         now = time.time()
         timestamp = datetime.now().strftime('%H:%M:%S')
 
+        # Stop after 6 PM
+        if datetime.now().hour >= 18:
+            print(f"[{timestamp}] Past 6 PM — stopping. Goodnight.")
+            break
+
         # --- Check if user is active ---
         current_pos = pyautogui.position()
         if current_pos != last_mouse_pos:
