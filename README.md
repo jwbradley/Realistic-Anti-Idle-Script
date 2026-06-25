@@ -1,53 +1,232 @@
-# 🖥️ Realistic Anti-Idle Script
+# 🖥️ Anti-Idle / Screen Timeout Prevention Script (v2 — Hybrid)
 
-**Prevents screen timeout and idle lockouts** by simulating natural human mouse and keyboard behavior. Designed to be significantly harder to detect than traditional anti-idle scripts.
+Three-layer defense against system idle timeouts and screen locks. Safe to run while actively working — mouse movements are suppressed when user activity is detected.
 
-## The Goal
+---
 
-Many corporate environments enforce aggressive screen lock / idle timeout policies (commonly 5, 10, or 15 minutes). When you step away or get pulled into a long meeting, your machine locks, which can interrupt workflows, VPN sessions, or long-running processes.
+## How It Works
 
-Simple scripts that draw perfect circles or type the same message on a fixed schedule are increasingly easy for modern monitoring systems (mouse trackers, keyloggers, or endpoint detection) to flag as automated behavior.
+| Layer | Method | When Active | User Impact |
+|-------|--------|-------------|-------------|
+| 1 | `SetThreadExecutionState` | Always (every 55s) | Zero — invisible OS-level flag |
+| 2 | F15 key press | Always (every 60-90s) | Zero — no application responds to F15 |
+| 3 | Mouse jiggle + keyboard | Only when idle (120s+ no movement) | None while you're working |
 
-**This script takes a different approach**: it generates **irregular, high-entropy, human-like input** so the activity looks like a real person who is present but not constantly typing or clicking.
+**You can leave this running 24/7 while actively working.** The script detects your mouse activity and only engages visible actions (layer 3) after you've been away for 2+ minutes.
 
-## Why This Version Is Better
+---
 
-Traditional anti-idle scripts are often easy to detect because they use:
-- Perfect geometric shapes (circles, squares)
-- Fixed timing intervals
-- Repetitive, identical keyboard input
-- Constant speed and movement patterns
+## Why Three Layers?
 
-This improved version counters those detection methods by using:
+- **Layer 1 (OS flag):** What video players use to keep the screen on. Tells Windows "don't sleep, don't blank." Invisible, no input simulation.
+- **Layer 2 (F15):** Resets the Windows idle timer at the HID level. F15 exists in the keyboard spec but no application uses it — completely invisible even if you're mid-typing.
+- **Layer 3 (Mouse jiggle):** For the most aggressive corporate monitoring tools that require actual mouse/keyboard HID events. Only fires when you're genuinely away.
 
-- **Gaussian jitter** and random relative movements instead of perfect paths
-- **Easing functions** (`easeInOutQuad`, `easeOutQuad`, etc.) for natural acceleration and deceleration
-- **Probabilistic timing** — activity happens at random intervals between configurable min/max values
-- **Varied keyboard actions** — mix of modifier keys, arrow navigation, and optional short varied phrases
-- **Multi-scale movement** — small natural fidgets + occasional larger “attention shifts”
+---
 
-The result is input that is much closer to real human behavior and significantly harder to fingerprint as scripted.
-
-## Features
-
-- Human-like mouse movement with variable speed and natural jitter
-- Probabilistic keyboard activity (Shift, Ctrl, arrows, and optional typing)
-- Fully configurable timing and intensity
-- Clean error handling and `FAILSAFE` protection
-- Graceful exit with `Ctrl + C`
-- Low resource usage
-- Works on Windows 10/11 (primary target)
-
-## Installation
-
-### 1. Install Python (if not already installed)
-
-Download the latest Python 3 from [python.org](https://www.python.org/downloads/).  
-During installation, **check the box** that says “Add Python to PATH”.
-
-### 2. Install Required Packages
-
-Open Command Prompt or PowerShell and run:
+## Requirements
 
 ```bash
 pip install pyautogui pynput
+```
+
+| Package | Purpose |
+|---------|---------|
+| `pyautogui` | Mouse movement with easing/tweening |
+| `pynput` | Keyboard input simulation (F15, modifier keys) |
+| `ctypes` | Windows API access (built-in, no install needed) |
+
+### Platform
+
+- **Windows only** — uses `SetThreadExecutionState` and VK_F15 (0x7E)
+- Python 3.7+
+
+---
+
+## Installation
+
+```bash
+pip install pyautogui pynput
+```
+
+---
+
+## Usage
+
+```bash
+# Start (runs until Ctrl+C)
+python anti_idle.py
+
+# Run minimized in background
+start /MIN python anti_idle.py
+
+# Run completely hidden (no console window)
+pythonw anti_idle.py
+```
+
+### Emergency Stop
+
+- **Ctrl+C** in the terminal — graceful shutdown, restores normal power management
+- **Move mouse to top-left corner (0,0)** — PyAutoGUI fail-safe kills the script instantly
+
+On exit, the script always calls `clear_execution_state()` to restore normal Windows power management.
+
+---
+
+## Configuration
+
+```python
+# Layer 1: OS-level (always active, invisible)
+EXECUTION_STATE_INTERVAL = 55   # Seconds between SetThreadExecutionState refreshes
+
+# Layer 2: F15 key (always active, invisible)
+F15_INTERVAL_MIN = 60           # Minimum seconds between F15 taps
+F15_INTERVAL_MAX = 90           # Maximum seconds between F15 taps
+
+# Layer 3: Mouse jiggle (only when user is idle)
+USER_IDLE_THRESHOLD = 120       # Seconds of no mouse movement before jiggle activates
+MOUSE_CHECK_INTERVAL = 10      # How often to check if user moved the mouse
+MOUSE_JITTER_INTENSITY = 35     # Average size of small movements (pixels)
+
+# Optional keyboard simulation (beyond F15)
+ENABLE_KEYBOARD_TYPING = False  # Only set True if you control the focused window
+KEYBOARD_ACTION_PROB = 0.20     # Chance of arrow key/modifier activity when idle
+```
+
+### Recommended Settings by Scenario
+
+| Scenario | Idle Threshold | F15 Interval | Jiggle Intensity |
+|----------|---------------|-------------|------------------|
+| Standard (5-min timeout) | 120s | 60-90s | 35 |
+| Aggressive (2-min timeout) | 60s | 30-45s | 25 |
+| Relaxed (10-min timeout) | 180s | 60-90s | 40 |
+| Maximum stealth | 120s | 55-75s | 20 |
+
+---
+
+## Idle Detection Logic
+
+```
+Every 10 seconds:
+  ├── Check mouse position
+  ├── If moved → reset idle timer (user is active)
+  │   └── Only layers 1 + 2 fire (invisible)
+  └── If same position for 120s → user is idle
+      └── All three layers fire (including mouse jiggle)
+```
+
+This means:
+- **Working at your desk:** Script is invisible. F15 and execution state keep the system alive.
+- **On another monitor:** Mouse hasn't moved on this screen → after 2 min, jiggle kicks in.
+- **Away from desk:** Full protection (all layers) within 2 minutes of leaving.
+
+---
+
+## Output
+
+```
+============================================================
+  Anti-Idle Hybrid Script v2
+  - Layer 1: OS execution state (invisible, always on)
+  - Layer 2: F15 key tap (invisible, always on)
+  - Layer 3: Mouse jiggle (only when idle)
+  Press Ctrl+C to stop cleanly.
+  Fail-safe: move mouse to top-left corner (0,0)
+============================================================
+
+Screen center: (960, 540)
+Idle threshold: 120s (mouse jiggle only after this)
+F15 interval: 60-90s
+
+[09:15:23] Layer 1: Execution state SET (display + system)
+[09:17:30] User active — layers 1+2 only (cycle #45)
+[09:22:10] Idle 130s — mouse jiggle + F15 active (cycle #75)
+[09:25:40] User active — layers 1+2 only (cycle #96)
+```
+
+---
+
+## Safety Features
+
+| Feature | Description |
+|---------|-------------|
+| **Idle detection** | Mouse jiggle only fires after 120s of no movement — never interferes with active work |
+| **Fail-safe corner** | Moving mouse to (0,0) instantly kills the script |
+| **Clean exit** | Ctrl+C restores normal power management before stopping |
+| **Error recovery** | Any uncaught exception also restores power management |
+| **No typing by default** | `ENABLE_KEYBOARD_TYPING=False` prevents accidental input |
+| **F15 is invisible** | No application in existence responds to F15 — safe during typing |
+| **Execution state restored** | Script always cleans up — your laptop will sleep normally after stopping |
+
+---
+
+## What Each Layer Defeats
+
+| Threat | Layer 1 (OS) | Layer 2 (F15) | Layer 3 (Mouse) |
+|--------|:---:|:---:|:---:|
+| Windows screen blank | Yes | Yes | Yes |
+| Windows lock screen | Yes | Yes | Yes |
+| Teams/Slack "Away" status | No | Yes | Yes |
+| HID-based idle monitoring | No | Yes | Yes |
+| Corporate DLP mouse tracking | No | No | Yes |
+| "Last input" timestamp checks | No | Yes | Yes |
+
+---
+
+## Running on Startup
+
+### Windows Task Scheduler
+
+1. Open Task Scheduler → Create Basic Task
+2. Trigger: "At log on"
+3. Action: Start a program
+   - Program: `pythonw.exe` (no console window)
+   - Arguments: `C:\Users\DT17787\anti_idle.py`
+4. Conditions: Uncheck "Start only if on AC power"
+
+### Simple Startup Folder
+
+1. Press `Win+R` → type `shell:startup` → Enter
+2. Create a shortcut to: `pythonw.exe C:\Users\DT17787\anti_idle.py`
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `ModuleNotFoundError: pyautogui` | `pip install pyautogui pynput` |
+| Mouse jiggling while I'm working | Increase `USER_IDLE_THRESHOLD` (default 120s) |
+| Screen still blanks | Check if Group Policy overrides execution state; F15 should still help |
+| Teams still shows "Away" | Reduce `F15_INTERVAL_MAX` to 45s |
+| Script killed on exit but screen won't sleep | Run `python -c "import ctypes; ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)"` to reset |
+| F15 not working | Some keyboards don't support VK 0x7E; the other layers compensate |
+| Laptop still sleeps on battery | Task Scheduler condition "Start only if on AC power" may be checked |
+
+---
+
+## Comparison to v1
+
+| Feature | v1 | v2 (Hybrid) |
+|---------|-----|-------------|
+| Safe while working | No (mouse moves randomly) | Yes (idle detection) |
+| Invisible layers | No | Yes (OS flag + F15) |
+| Works on other monitor | No (needs mouse on screen) | Yes (F15 + OS flag always active) |
+| Works away from desk | Yes | Yes (all layers after 120s) |
+| Restores power management on exit | No | Yes |
+| Defeats Teams "Away" | Yes (mouse) | Yes (F15 + mouse when idle) |
+
+---
+
+## Warnings
+
+- Use responsibly and in compliance with your organization's policies
+- `ENABLE_KEYBOARD_TYPING=True` will type into the focused window — leave it off
+- The script modifies Windows power management state — always exit cleanly (Ctrl+C)
+- If the script crashes without cleanup, run: `python -c "import ctypes; ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)"`
+
+---
+
+## License
+
+Personal use. Use responsibly.
