@@ -4,10 +4,11 @@ Hybrid Anti-Idle / Screen Timeout Prevention Script (v2)
 
 Three-layer defense against idle timeouts:
   1. SetThreadExecutionState — OS-level "don't sleep" flag (invisible, always on)
-  2. F15 key press — resets idle timer without affecting any application (invisible)
+  2. F15 key press — only fires after the user has been idle (no kb/mouse) for the threshold
   3. Mouse jiggle — only activates when user has been truly idle (won't interfere with active work)
 
-Safe to run while actively working. Mouse movements are suppressed when user activity is detected.
+Safe to run while actively working. Both the F15 tap and the mouse jiggle are gated behind the
+same idle check, so neither fires while you are typing or moving the mouse.
 """
 
 import ctypes
@@ -22,13 +23,13 @@ from pynput.keyboard import Key, Controller, KeyCode
 # Layer 1: OS-level (always active, invisible)
 EXECUTION_STATE_INTERVAL = 55   # Seconds between SetThreadExecutionState refreshes
 
-# Layer 2: F15 key (always active, invisible)
+# Layer 2: F15 key (only fires when user is idle, invisible)
 F15_INTERVAL_MIN = 60           # Minimum seconds between F15 taps
 F15_INTERVAL_MAX = 90           # Maximum seconds between F15 taps
 
 # Layer 3: Mouse jiggle (only when user is idle)
 USER_IDLE_THRESHOLD = 120       # Seconds of no mouse movement before jiggle activates
-MOUSE_CHECK_INTERVAL = 10      # How often to check if user moved the mouse
+MOUSE_CHECK_INTERVAL = 10       # How often to check if user moved the mouse
 MOUSE_JITTER_INTENSITY = 35     # Average size of small movements (pixels)
 
 # Optional keyboard simulation (beyond F15)
@@ -61,9 +62,15 @@ keyboard = Controller()
 # Track last user input time (keyboard or mouse)
 _last_input_time = time.time()
 
+# Set True while the script itself is synthesizing key events, so the listener
+# does not mistake our own F15/arrow/modifier taps for real user activity.
+_synthetic_input = False
+
 def _on_key_activity(key):
-    """Reset idle timer on any keyboard activity."""
+    """Reset idle timer on genuine keyboard activity (ignore our own synthetic keys)."""
     global _last_input_time
+    if _synthetic_input:
+        return
     _last_input_time = time.time()
 
 # Start keyboard listener in background thread
@@ -92,13 +99,17 @@ def clear_execution_state():
 
 def press_f15():
     """Press F15 key — resets idle timer, no application responds to it."""
+    global _synthetic_input
     try:
+        _synthetic_input = True
         f15 = KeyCode.from_vk(0x7E)  # VK_F15 = 0x7E (126)
         keyboard.press(f15)
         time.sleep(random.uniform(0.05, 0.12))
         keyboard.release(f15)
     except Exception:
         pass
+    finally:
+        _synthetic_input = False
 
 
 def get_screen_center():
@@ -157,19 +168,24 @@ def do_human_like_mouse_activity():
 
 def do_idle_keyboard_activity():
     """Light keyboard activity when user is idle (modifier taps, arrow keys)."""
-    if random.random() < 0.6:
-        key = random.choice([Key.shift, Key.ctrl])
-        keyboard.press(key)
-        time.sleep(random.uniform(0.08, 0.15))
-        keyboard.release(key)
-        return
+    global _synthetic_input
+    try:
+        _synthetic_input = True
+        if random.random() < 0.6:
+            key = random.choice([Key.shift, Key.ctrl])
+            keyboard.press(key)
+            time.sleep(random.uniform(0.08, 0.15))
+            keyboard.release(key)
+            return
 
-    for _ in range(random.randint(1, 2)):
-        arrow = random.choice([Key.right, Key.left, Key.up, Key.down])
-        keyboard.press(arrow)
-        time.sleep(random.uniform(0.06, 0.12))
-        keyboard.release(arrow)
-        time.sleep(random.uniform(0.1, 0.2))
+        for _ in range(random.randint(1, 2)):
+            arrow = random.choice([Key.right, Key.left, Key.up, Key.down])
+            keyboard.press(arrow)
+            time.sleep(random.uniform(0.06, 0.12))
+            keyboard.release(arrow)
+            time.sleep(random.uniform(0.1, 0.2))
+    finally:
+        _synthetic_input = False
 
 
 def main_loop():
